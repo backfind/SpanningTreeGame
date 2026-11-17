@@ -30,7 +30,6 @@ node server.js
 | `server.js` | 房间管理、全部规则校验与状态机、SSE 推送、静态页 |
 | `public/index.html` | 棋盘渲染（SVG 边线/冻结纹理）、操作交互、大厅 |
 | `run.html` | 原单机版（保留，未改动） |
-| `_smoke.js` | 冒烟测试（本地，28 项断言；`node _smoke.js` 需先起服务） |
 
 ## 相对原版的规则修正
 
