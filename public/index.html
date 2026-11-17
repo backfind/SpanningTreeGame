@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>伸展树 8×8 联机对战</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #1b1b21;
+    color: #e2e2e2;
+  }
+  #app {
+    display: flex;
+    gap: 26px;
+    padding: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  #boardWrap {
+    position: relative;
+    width: 400px;
+    height: 400px;
+    flex: 0 0 auto;
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 50px);
+    grid-template-rows: repeat(8, 50px);
+  }
+  .cell {
+    position: relative;
+    border: 1px solid #36363f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 17px;
+    user-select: none;
+    color: #fff;
+    text-shadow: 0 1px 3px #000;
+    transition: background .12s, box-shadow .12s;
+  }
+  .cell.sel { outline: 3px solid #fff; outline-offset: -3px; z-index: 6; }
+  .cell.frozen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(45deg, rgba(190,215,255,.28) 0 5px, transparent 5px 10px);
+    pointer-events: none;
+  }
+  .cell.off { opacity: .45; }
+  #svg {
+    position: absolute;
+    left: 0; top: 0;
+    width: 400px; height: 400px;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #panel { width: 340px; }
+  h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+  .row { margin: 9px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: #33333f; color: #e8e8e8; border: 1px solid #4a4a58;
+    padding: 7px 14px; border-radius: 5px; cursor: pointer; font-size: 13px;
+    transition: background .12s;
+  }
+  button:hover:not(:disabled) { background: #40404e; }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  button.active { background: #2e6fd8; border-color: #4a8ef5; }
+  select, input {
+    background: #26262f; color: #e8e8e8; border: 1px solid #4a4a58;
+    padding: 4px 8px; border-radius: 4px; font-size: 13px;
+  }
+  #log {
+    height: 220px; overflow-y: auto;
+    background: #131318; border: 1px solid #2e2e38; border-radius: 5px;
+    padding: 8px; font-size: 12px; line-height: 1.7; margin-top: 10px;
+  }
+  .small { font-size: 12px; color: #9a9aa8; }
+  #hint { min-height: 18px; color: #8fc4ff; }
+  #lobby {
+    max-width: 460px; margin: 60px auto; padding: 28px;
+    background: #22222a; border: 1px solid #3a3a46; border-radius: 8px;
+  }
+  #lobby h2 { font-size: 20px; }
+  #lobby .row { justify-content: center; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2ecc71; margin-right:4px; }
+  .status-dot.off { background:#e74c3c; }
+</style>
+</head>
+<body>
+
+<div id="lobby">
+  <h2>伸展树 8×8 联机对战</h2>
+  <div class="row">
+    <button id="btnCreate">创建房间</button>
+  </div>
+  <div class="row">
+    <input id="roomInput" placeholder="房间号" maxlength="6" style="text-transform:uppercase">
+    <button id="btnJoin">加入房间</button>
+  </div>
+  <div class="row"><span class="small" id="lobbyMsg"></span></div>
+</div>
+
+<div id="app" style="display:none">
+  <div id="boardWrap">
+    <div id="board"></div>
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="panel">
+    <h2 id="turnLabel">连接中…</h2>
+
+    <div class="row small">
+      <span class="status-dot" id="connDot"></span><span id="connText">未连接</span>
+      &nbsp;|&nbsp;身份：<b id="roleText">-</b>
+      &nbsp;|&nbsp;房间：<b id="roomText">-</b>
+      <button id="btnCopy" style="margin-left:8px">复制房间号</button>
+      <button id="btnReset">重开对局</button>
+    </div>
+
+    <div class="row">
+      <button id="btnExtend">伸展 (0/3)</button>
+      <button id="btnGraft">嫁接 (未用)</button>
+      <button id="btnEnd">结束回合</button>
+    </div>
+
+    <div class="row">
+      <span class="small">源点颜色</span>
+      <select id="srcColor"></select>
+      <span class="small">（源点作为 x 时使用）</span>
+    </div>
+
+    <div class="row small" id="hint">等待连接…</div>
+
+    <div class="row small">
+      <span style="color:#e74c3c">■</span>1
+      <span style="color:#e67e22">■</span>2
+      <span style="color:#f1c40f">■</span>3
+      &nbsp;&nbsp;
+      <span style="color:#1abc9c">■</span>4
+      <span style="color:#3498db">■</span>5
+      <span style="color:#9b59b6">■</span>6
+      &nbsp;&nbsp;金虚线=嫁接边
+    </div>
+
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============ 常量 / 工具 ============ */
+  const SZ = 50;
+  const COLORS = {
+    1: '#e74c3c', 2: '#e67e22', 3: '#f1c40f',
+    4: '#1abc9c', 5: '#3498db', 6: '#9b59b6'
+  };
+  const SRC = { A: 0, B: 63 };
+
+  const rcOf = i => [Math.floor(i / 8), i % 8];
+  const idxOf = (r, c) => r * 8 + c;
+  const cellName = i => { const [r, c] = rcOf(i); return '(' + (r + 1) + ',' + (c + 1) + ')'; };
+
+  function isAdj(a, b) {
+    if (a === b) return false;
+    const [r1, c1] = rcOf(a), [r2, c2] = rcOf(b);
+    return Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1;
+  }
+
+  /* ============ 客户端状态 ============ */
+  let room = null, token = null, role = null;
+  let S = null;          // 服务端快照
+  let mode = 'extend';
+  let sel = [];
+  let es = null;         // EventSource
+
+  const $ = id => document.getElementById(id);
+
+  /* ============ 大厅 ============ */
+  $('btnCreate').addEventListener('click', () => joinRoom(null, true));
+  $('btnJoin').addEventListener('click', () => {
+    const id = $('roomInput').value.trim().toUpperCase();
+    if (!id) { $('lobbyMsg').textContent = '请输入房间号'; return; }
+    joinRoom(id, false);
+  });
+
+  async function joinRoom(id, create) {
+    $('lobbyMsg').textContent = '连接中…';
+    try {
+      const r = await fetch('/api/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(create ? { create: true } : { room: id })
+      });
+      const data = await r.json();
+      if (!data.ok) { $('lobbyMsg').textContent = data.msg || '加入失败'; return; }
+      room = data.room; token = data.token; role = data.role;
+      if (create) history.replaceState(null, '', '?room=' + room);
+      enterGame();
+    } catch (e) {
+      $('lobbyMsg').textContent = '网络错误：' + e.message;
+    }
+  }
+
+  function enterGame() {
+    $('lobby').style.display = 'none';
+    $('app').style.display = 'flex';
+    $('roomText').textContent = room;
+    $('roleText').textContent = role === 'spectator' ? '观战' : role;
+    buildBoard();
+    rebuildColorSelect();
+    connectSSE();
+  }
+
+  /* ============ SSE ============ */
+  function connectSSE() {
+    es = new EventSource('/api/events?room=' + encodeURIComponent(room));
+    es.onopen = () => { $('connDot').className = 'status-dot'; $('connText').textContent = '已连接'; };
+    es.onerror = () => { $('connDot').className = 'status-dot off'; $('connText').textContent = '重连中…'; };
+    es.onmessage = ev => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'state') {
+        const first = !S;
+        S = msg.state;
+        render();
+        refreshPanel();
+        if (first) $('hint').textContent = '选择「伸展」或「嫁接」开始操作';
+      }
+    };
+  }
+
+  /* ============ 操作发送 ============ */
+  async function act(body) {
+    try {
+      const r = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ room, token }, body))
+      });
+      const data = await r.json();
+      if (!data.ok) setHint(data.msg || '操作被拒绝');
+      return data;
+    } catch (e) {
+      setHint('网络错误：' + e.message);
+      return { ok: false };
+    }
+  }
+
+  /* ============ 棋盘 ============ */
+  const cellEls = [];
+  function buildBoard() {
+    const boardEl = $('board');
+    for (let i = 0; i < 64; i++) {
+      const d = document.createElement('div');
+      d.className = 'cell';
+      d.addEventListener('click', () => onCellClick(i));
+      boardEl.appendChild(d);
+      cellEls.push(d);
+    }
+  }
+
+  function myTurn() { return role !== 'spectator' && S && S.turn === role && !S.over; }
+  function isFrozen(i) {
+    if (!S) return false;
+    return role === 'A' ? S.frozenA.includes(i) : S.frozenB.includes(i);
+  }
+
+  function onCellClick(i) {
+    if (!S) return;
+    if (S.over) { setHint('对局已结束，可点「重开对局」'); return; }
+    if (role === 'spectator') { setHint('观战模式无法操作'); return; }
+    if (S.turn !== role) { setHint('还未到你的回合'); return; }
+    if (mode === 'extend') clickExtend(i); else clickGraft(i);
+    render();
+    refreshPanel();
+  }
+
+  function srcColorVal() { return parseInt($('srcColor').value, 10); }
+
+  function clickExtend(i) {
+    if (S.extendCount >= 3) { setHint('本回合伸展次数已用完'); return; }
+    if (sel.length === 0) {
+      if (S.owner[i] !== role) { setHint('请选择己方的点作为 x'); return; }
+      if (isFrozen(i)) { setHint('该点被冻结，本回合不能用于伸展'); return; }
+      sel = [i];
+      setHint('已选 x=' + cellName(i) + '，请点击相邻的、不属于我方的点 y');
+      return;
+    }
+    const x = sel[0];
+    if (i === x) { sel = []; setHint('已取消选择'); return; }
+    if (!isAdj(x, i)) { setHint('y 必须与 x 网格联通（8 邻域）'); return; }
+    if (S.owner[i] === role) { setHint('y 不能属于我方'); return; }
+
+    const c = (x === SRC.A || x === SRC.B) ? srcColorVal() : S.color[x];
+    if (!c) { setHint('颜色无效'); return; }
+    if (S.extendColors.includes(c)) {
+      setHint('本回合已用颜色 ' + c + ' 伸展过了（同一回合颜色不能相同）');
+      return;
+    }
+    act({ action: 'extend', x, y: i, color: c }).then(ok => {
+      if (ok.ok) { sel = []; setHint('伸展完成'); }
+    });
+  }
+
+  function clickGraft(i) {
+    if (S.graftUsed) { setHint('本回合嫁接已使用'); return; }
+
+    if (sel.length === 0) {
+      if (S.owner[i] !== role) { setHint('请选择己方的点作为 x'); return; }
+      sel = [i];
+      setHint('已选 x=' + cellName(i) + '，请点击相邻的同方点 y（颜色需不同）');
+      return;
+    }
+    if (sel.length === 1) {
+      const x = sel[0];
+      if (i === x) { sel = []; setHint('已取消选择'); return; }
+      if (S.owner[i] !== role) { setHint('y 必须属于我方'); return; }
+      if (!isAdj(x, i)) { setHint('x 与 y 必须网格联通'); return; }
+      const cx = (x === SRC.A || x === SRC.B) ? srcColorVal() : S.color[x];
+      const cy = (i === SRC.A || i === SRC.B) ? null : S.color[i];
+      if (cx && cy !== null && cx === cy) { setHint('x 与 y 的颜色必须不同'); return; }
+      sel = [x, i];
+      setHint('已选 x=' + cellName(x) + '，y=' + cellName(i) + '，请点击与 y 相邻的、不属于我方的点 z');
+      return;
+    }
+    const x = sel[0], y = sel[1];
+    if (!isAdj(y, i)) { setHint('z 必须与 y 网格联通'); return; }
+    if (S.owner[i] === role) { setHint('z 不能属于我方'); return; }
+
+    const c = (x === SRC.A || x === SRC.B) ? srcColorVal() : S.color[x];
+    act({ action: 'graft', x, y, z: i, color: c || 0 }).then(ok => {
+      if (ok.ok) { sel = []; setHint('嫁接完成'); }
+    });
+  }
+
+  /* ============ 渲染 ============ */
+  function render() {
+    if (!S) return;
+    for (let i = 0; i < 64; i++) {
+      const el = cellEls[i];
+      el.className = 'cell';
+      if (i === SRC.A && S.srcAlive.A) {
+        el.style.background = 'linear-gradient(135deg,#e74c3c,#e67e22,#f1c40f)';
+      } else if (i === SRC.B && S.srcAlive.B) {
+        el.style.background = 'linear-gradient(135deg,#1abc9c,#3498db,#9b59b6)';
+      } else if (S.color[i]) {
+        el.style.background = COLORS[S.color[i]];
+      } else {
+        el.style.background = '#26262e';
+      }
+      el.textContent = ((i === SRC.A && S.srcAlive.A) || (i === SRC.B && S.srcAlive.B)) ? '★' : '';
+      if (sel.indexOf(i) >= 0) el.classList.add('sel');
+      if (isFrozen(i)) el.classList.add('frozen');
+      if (S.owner[i] === 'A') el.style.boxShadow = 'inset 0 0 0 2px rgba(255,140,140,.9)';
+      else if (S.owner[i] === 'B') el.style.boxShadow = 'inset 0 0 0 2px rgba(130,170,255,.9)';
+      else el.style.boxShadow = 'inset 0 0 0 1px #36363f';
+    }
+    drawEdges();
+  }
+
+  function drawEdges() {
+    const svg = $('svg');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const NS = 'http://www.w3.org/2000/svg';
+    const ctr = i => { const [r, c] = rcOf(i); return [c * SZ + SZ / 2, r * SZ + SZ / 2]; };
+    function line(a, b, stroke, dash) {
+      const [x1, y1] = ctr(a), [x2, y2] = ctr(b);
+      const l = document.createElementNS(NS, 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      l.setAttribute('stroke', stroke);
+      l.setAttribute('stroke-width', '4');
+      l.setAttribute('stroke-linecap', 'round');
+      l.setAttribute('opacity', '0.92');
+      if (dash) l.setAttribute('stroke-dasharray', dash);
+      svg.appendChild(l);
+    }
+    for (const k of S.normalEdges) {
+      const [a, b] = k.split('_').map(Number);
+      line(a, b, '#ffffff', null);
+    }
+    for (const k of S.graftEdges) {
+      const [a, b] = k.split('_').map(Number);
+      line(a, b, '#ffd24a', '7 5');
+    }
+  }
+
+  /* ============ 面板 ============ */
+  function log(t) {
+    const el = $('log');
+    const d = document.createElement('div');
+    d.textContent = t;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function rebuildLog() {
+    $('log').innerHTML = '';
+    if (S) S.log.forEach(log);
+  }
+
+  function setHint(t) { $('hint').textContent = t; }
+
+  function rebuildColorSelect() {
+    const opts = role === 'B' ? [4, 5, 6] : [1, 2, 3];
+    $('srcColor').innerHTML = opts.map(v => '<option value="' + v + '">' + v + '</option>').join('');
+  }
+
+  let lastLogLen = 0;
+  function refreshPanel() {
+    if (!S) return;
+    $('turnLabel').textContent = S.over
+      ? '对局结束：' + S.winner + ' 获胜！'
+      : (S.turn + ' 回合' + (S.turn === 'A' ? '（先手）' : '') + (myTurn() ? ' —— 你的回合' : ''));
+
+    const be = $('btnExtend'), bg = $('btnGraft'), bd = $('btnEnd');
+    be.textContent = '伸展 (' + S.extendCount + '/3)';
+    bg.textContent = '嫁接 (' + (S.graftUsed ? '已用' : '未用') + ')';
+    be.classList.toggle('active', mode === 'extend');
+    bg.classList.toggle('active', mode === 'graft');
+    const enabled = myTurn();
+    be.disabled = !enabled || S.extendCount >= 3;
+    bg.disabled = !enabled || S.graftUsed;
+    bd.disabled = !enabled;
+
+    if (S.log.length !== lastLogLen) {
+      rebuildLog();
+      lastLogLen = S.log.length;
+    }
+  }
+
+  /* ============ 按钮 ============ */
+  $('btnExtend').addEventListener('click', () => {
+    mode = 'extend'; sel = [];
+    setHint('伸展模式：先点己方点 x，再点相邻的非己方点 y');
+    render(); refreshPanel();
+  });
+  $('btnGraft').addEventListener('click', () => {
+    mode = 'graft'; sel = [];
+    setHint('嫁接模式：点己方 x → 相邻同方 y（颜色不同）→ 与 y 相邻的非己方 z');
+    render(); refreshPanel();
+  });
+  $('btnEnd').addEventListener('click', () => {
+    act({ action: 'end' }).then(ok => { if (ok.ok) { sel = []; setHint('回合已结束'); } });
+  });
+  $('btnReset').addEventListener('click', () => {
+    act({ action: 'reset' }).then(ok => { if (ok.ok) { sel = []; setHint('对局已重置'); } });
+  });
+  $('btnCopy').addEventListener('click', () => {
+    navigator.clipboard && navigator.clipboard.writeText(room);
+    setHint('房间号已复制：' + room);
+  });
+
+  /* ============ URL 直达房间 ============ */
+  const urlRoom = new URLSearchParams(location.search).get('room');
+  if (urlRoom) {
+    $('roomInput').value = urlRoom.toUpperCase();
+    joinRoom(urlRoom, false);
+  }
+})();
+</script>
+</body>
+</html>

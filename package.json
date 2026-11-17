@@ -1,0 +1,13 @@
+{
+  "name": "growing-tree-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "伸展树 8x8 双人在线对战（Render 免费版兼容，零依赖）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
